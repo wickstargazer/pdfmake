@@ -5,4 +5,9 @@ pipelines:
           name: NPM Package Deploy
           image: node:8.10
           script:
+            - npm config set init.author.name "Flowaccount"
+            - npm config set init.author.email "beam@flowaccount.com"
+            - npm config set init.author.url "https://www.flowaccount.com"
+            - npm config set init.license "MIT"
+            - npm config set init.version $MAJOR_NUMBER + "." + $MINOR_NUMBER + "." + $BITBUCKET_BUILD_NUMBER
             - echo $BITBUCKET_BUILD_NUMBER 
