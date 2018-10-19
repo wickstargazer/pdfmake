@@ -1,6 +1,6 @@
 {
-  "_from": "pdfmake_flowaccount@^0.2.0",
-  "_id": "pdfmake_flowaccount@0.2.0",
+  "_from": "pdfmake_flowaccount@^[packageVersion]",
+  "_id": "pdfmake_flowaccount@[packageVersion]",
   "_inBundle": false,
   "_integrity": "sha512-crZEqFkIvn3A8kFVQVfT8/ufp9aoYg/dA8aU3AD9oo7q5Rcl1YvC+DjtLErjIwQGKVucOJB5vUEmdfI/pmHgvg==",
   "_location": "/pdfmake_flowaccount",
@@ -8,19 +8,19 @@
   "_requested": {
     "type": "range",
     "registry": true,
-    "raw": "pdfmake_flowaccount@^0.2.0",
+    "raw": "pdfmake_flowaccount@^[packageVersion]",
     "name": "pdfmake_flowaccount",
     "escapedName": "pdfmake_flowaccount",
-    "rawSpec": "^0.2.0",
+    "rawSpec": "^[packageVersion]",
     "saveSpec": null,
-    "fetchSpec": "^0.2.0"
+    "fetchSpec": "^[packageVersion]"
   },
   "_requiredBy": [
     "/"
   ],
-  "_resolved": "https://registry.npmjs.org/pdfmake_flowaccount/-/pdfmake_flowaccount-0.2.0.tgz",
+  "_resolved": "https://registry.npmjs.org/pdfmake_flowaccount/-/pdfmake_flowaccount-[packageVersion].tgz",
   "_shasum": "fd3b90acf004c2b6a470c34e78e5093c03975ae2",
-  "_spec": "pdfmake_flowaccount@^0.2.0",
+  "_spec": "pdfmake_flowaccount@^[packageVersion]",
   "_where": "/mnt/d/beamsorrasak/Projects/Flowaccount/pdf-generator",
   "author": {
     "name": "Sorrasak Phonklad",
@@ -91,5 +91,5 @@
     "build": "gulp build",
     "test": "gulp"
   },
-  "version": "0.2.0"
+  "version": "[packageVersion]"
 }
