@@ -10,4 +10,6 @@ pipelines:
             - npm config set init.author.url "https://www.flowaccount.com"
             - npm config set init.license "MIT"
             - npm config set init.version $MAJOR_NUMBER + "." + $MINOR_NUMBER + "." + $BITBUCKET_BUILD_NUMBER
+            - printf "//`node -p \"require('url').parse(process.env.NPM_REGISTRY_URL || 'https://registry.npmjs.org').host\"`/:_authToken=${NPM_TOKEN}\nregistry=${NPM_REGISTRY_URL:-https://registry.npmjs.org}\n" >> ~/.npmrc
+            - npm publish
             - echo $BITBUCKET_BUILD_NUMBER 
