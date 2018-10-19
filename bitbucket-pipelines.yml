@@ -1,0 +1,8 @@
+pipelines:
+  branches: 
+    preprod:
+      - step:
+          name: NPM Package Deploy
+          image: node:8.10
+          script:
+            - echo $BITBUCKET_BUILD_NUMBER 
