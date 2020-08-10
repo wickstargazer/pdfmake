@@ -2,7 +2,7 @@
 'use strict';
 
 var LineBreaker = require('linebreak');
-const Tokenizer = require('node-icu-tokenizer');
+const Tokenizer = require('@flowaccount/node-icu-tokenizer');
 const fontkit = require('fontkit');
 
 var LEADING = /^(\s)+/g;
