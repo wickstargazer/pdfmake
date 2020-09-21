@@ -15,7 +15,12 @@ TableProcessor.prototype.beginTable = function (writer) {
 	tableNode = this.tableNode;
 	this.offsets = tableNode._offsets;
 	this.layout = tableNode._layout;
-
+	if(tableNode.remark && writer.context().availableHeight){
+		if(50 > writer.context().availableHeight){
+			writer.context().moveDown(writer.context().availableHeight);
+			this.beginNewPage = true;
+		}
+	}if(!this.offsets){console.log('OKKKKK',writer.context().availableWidth,this.offsets);}
 	availableWidth = writer.context().availableWidth - this.offsets.total;
 	ColumnCalculator.buildColumnWidths(tableNode.table.widths, availableWidth);
 
@@ -52,7 +57,7 @@ TableProcessor.prototype.beginTable = function (writer) {
 		var lastWidth = 0;
 
 		rsd.push({left: 0, rowSpan: 0});
-
+		if(!self.tableNode.table.body[0]) {return rsd;}
 		for (var i = 0, l = self.tableNode.table.body[0].length; i < l; i++) {
 			var paddings = self.layout.paddingLeft(i, self.tableNode) + self.layout.paddingRight(i, self.tableNode);
 			var lBorder = self.layout.vLineWidth(i, self.tableNode);
@@ -121,6 +126,12 @@ TableProcessor.prototype.onRowBreak = function (rowIndex, writer) {
 	var self = this;
 	return function () {
 		var offset = self.rowPaddingTop + (!self.headerRows ? self.topLineWidth : 0);
+		if(writer.context().getCurrentPage().items[0]){
+			if(writer.context().getCurrentPage().items[0].item.remark){
+				writer.context().getCurrentPage().items[0].item.lineColor = '#d5d5d5';
+			}
+		}
+
 		writer.context().availableHeight -= self.reservedAtBottom;
 		writer.context().moveDown(offset);
 	};
@@ -151,7 +162,6 @@ TableProcessor.prototype.drawHorizontalLine = function (lineIndex, writer, overr
 		var offset = lineWidth / 2;
 		var currentLine = null;
 		var body = this.tableNode.table.body;
-
 		for (var i = 0, l = this.rowSpanData.length; i < l; i++) {
 			var data = this.rowSpanData[i];
 			var shouldDrawLine = !data.rowSpan;
@@ -190,12 +200,13 @@ TableProcessor.prototype.drawHorizontalLine = function (lineIndex, writer, overr
 				if (currentLine && currentLine.width) {
 					writer.addVector({
 						type: 'line',
+						remark: this.tableNode.remark,
 						x1: currentLine.left,
 						x2: currentLine.left + currentLine.width,
 						y1: y,
 						y2: y,
 						lineWidth: lineWidth,
-						lineColor: typeof this.layout.hLineColor === 'function' ? this.layout.hLineColor(lineIndex, this.tableNode) : this.layout.hLineColor
+						lineColor: typeof this.layout.hLineColor === 'function' ? this.layout.hLineColor(lineIndex, this.tableNode, this.beginNewPage) : this.layout.hLineColor
 					}, false, overrideY);
 					currentLine = null;
 				}

@@ -328,6 +328,12 @@ function renderPages(pages, fontProvider, pdfKitDoc, progressCallback) {
 				case 'image':
 					renderImage(item.item, item.item.x, item.item.y, pdfKitDoc);
 					break;
+				case 'beginVerticalAlign':
+					beginVerticalAlign(item.item, pdfKitDoc);
+					break;
+				  case 'endVerticalAlign':
+					endVerticalAlign(item.item, pdfKitDoc);
+					break;
 			}
 			renderedItems++;
 			progressCallback(renderedItems / totalItems);
@@ -497,6 +503,28 @@ function renderImage(image, x, y, pdfKitDoc) {
 		pdfKitDoc.link(image.x, image.y, image._width, image._height, image.link);
 	}
 }
+
+function beginVerticalAlign(item, pdfKitDoc) {
+	switch(item.verticalAlign) {
+	  case 'center':
+		pdfKitDoc.save();
+		pdfKitDoc.translate(0, -(item.nodeHeight - item.viewHeight) / 2);
+		break;
+	  case 'bottom':
+		pdfKitDoc.save();
+		pdfKitDoc.translate(0, -(item.nodeHeight - item.viewHeight));
+		break;
+	}
+  }
+
+  function endVerticalAlign(item, pdfKitDoc) {
+	switch(item.verticalAlign) {
+	  case 'center':
+	  case 'bottom':
+		pdfKitDoc.restore();
+		break;
+	}
+  }
 
 module.exports = PdfPrinter;
 

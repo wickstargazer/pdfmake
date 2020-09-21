@@ -35,7 +35,9 @@ function LayoutBuilder(pageSize, pageMargins, imageMeasure) {
 	this.pageMargins = pageMargins;
 	this.tracker = new TraversalTracker();
 	this.imageMeasure = imageMeasure;
+	this.verticalAlignItemStack = [];
 	this.tableLayouts = {};
+	this.heightHeaderAndFooter = {};
 }
 
 LayoutBuilder.prototype.registerTableLayouts = function (tableLayouts) {
@@ -74,6 +76,7 @@ LayoutBuilder.prototype.layoutDocument = function (docStructure, fontProvider, s
 			nodeInfo.pageNumbers = _.chain(node.positions).map('pageNumber').uniq().value();
 			nodeInfo.pages = pages.length;
 			nodeInfo.stack = _.isArray(node.stack);
+			nodeInfo.layers = _.isArray(node.layers);
 
 			node.nodeInfo = nodeInfo;
 		});
@@ -127,6 +130,43 @@ LayoutBuilder.prototype.layoutDocument = function (docStructure, fontProvider, s
 
 LayoutBuilder.prototype.tryLayoutDocument = function (docStructure, fontProvider, styleDictionary, defaultStyle, background, header, footer, images, watermark, pageBreakBeforeFct) {
 
+	//----------get height layout header and footer ^^modify by tak^^------------
+	this.linearNodeList = [];
+	this.writer = new PageElementWriter(
+		new DocumentContext(this.pageSize, this.pageMargins), this.tracker);
+	this.heightHeaderAndFooter = this.addHeadersAndFooters(header, footer);
+
+	if(this.heightHeaderAndFooter.header != undefined)
+		this.pageMargins.top = this.heightHeaderAndFooter.header +1;
+	//----------get height layout header and footer ^^modify by tak^^------------
+
+	//----------Remark Table Page Break by Beam----------
+	if(docStructure[2][0]) {
+	   if(docStructure[2][0].remark){
+		   var tableRemark = docStructure[2][0].remark;
+			 var remarkLabel = docStructure[2][0];
+	     var remarkDetail = docStructure[2][1].text;
+
+		   docStructure[2].splice(0, 1);
+		   docStructure[2].splice(0, 1);
+
+	    var labelRow = [];
+	    var detailRow = [];
+
+	    labelRow.push(remarkLabel);
+	    detailRow.push({remarktest:true,text:remarkDetail});
+
+	    tableRemark.table.body.push(labelRow);
+	    tableRemark.table.body.push(detailRow);
+
+	    tableRemark.table.headerRows = 1;
+
+	    docStructure[2].push(tableRemark);
+
+	   }
+	}
+	//----------Remark Table Page Break by Beam----------
+
 	this.linearNodeList = [];
 	docStructure = this.docPreprocessor.preprocessDocument(docStructure);
 	docStructure = this.docMeasure.measureDocument(docStructure);
@@ -141,7 +181,7 @@ LayoutBuilder.prototype.tryLayoutDocument = function (docStructure, fontProvider
 
 	this.addBackground(background);
 	this.processNode(docStructure);
-	this.addHeadersAndFooters(header, footer);
+	this.addHeadersAndFooters(header, footer, this.heightHeaderAndFooter.header + 1, this.heightHeaderAndFooter.footer + 1);
 	/* jshint eqnull:true */
 	if (watermark != null) {
 		this.addWatermark(watermark, fontProvider, defaultStyle);
@@ -168,9 +208,11 @@ LayoutBuilder.prototype.addBackground = function (background) {
 };
 
 LayoutBuilder.prototype.addStaticRepeatable = function (headerOrFooter, sizeFunction) {
-	this.addDynamicRepeatable(function () {
+	var height = this.addDynamicRepeatable(function () {
 		return JSON.parse(JSON.stringify(headerOrFooter)); // copy to new object
 	}, sizeFunction);
+
+	return height;
 };
 
 LayoutBuilder.prototype.addDynamicRepeatable = function (nodeGetter, sizeFunction) {
@@ -189,38 +231,59 @@ LayoutBuilder.prototype.addDynamicRepeatable = function (nodeGetter, sizeFunctio
 			this.writer.commitUnbreakableBlock(sizes.x, sizes.y);
 		}
 	}
+
+	return node._height;
 };
 
-LayoutBuilder.prototype.addHeadersAndFooters = function (header, footer) {
+LayoutBuilder.prototype.addHeadersAndFooters = function (header, footer, headerHeight, footeHeight) {
+	var headerHeight;
+	var footeHeight;
+
+
 	var headerSizeFct = function (pageSize, pageMargins) {
+		if(headerHeight == undefined)
+			headerHeight = pageSize.height;
+
 		return {
 			x: 0,
 			y: 0,
 			width: pageSize.width,
-			height: pageMargins.top
+			height: headerHeight
 		};
 	};
 
 	var footerSizeFct = function (pageSize, pageMargins) {
+		if(footeHeight == undefined)
+			footeHeight = pageSize.height;
+
 		return {
 			x: 0,
-			y: pageSize.height - pageMargins.bottom,
+			y: pageSize.height - footeHeight,
 			width: pageSize.width,
-			height: pageMargins.bottom
+			height: footeHeight
 		};
 	};
 
-	if (isFunction(header)) {
-		this.addDynamicRepeatable(header, headerSizeFct);
-	} else if (header) {
-		this.addStaticRepeatable(header, headerSizeFct);
-	}
+	//---check availableHeight for add footer last page ^^modify by tak^^---
+	/*if(footeHeight != undefined && typeof footeHeight == "number"){
+		if(this.writer.context().availableHeight < footeHeight){
+			this.writer.moveToNextPage();
+		}
+	}*/
 
 	if (isFunction(footer)) {
-		this.addDynamicRepeatable(footer, footerSizeFct);
+		footeHeight = this.addDynamicRepeatable(footer, footerSizeFct);
 	} else if (footer) {
-		this.addStaticRepeatable(footer, footerSizeFct);
+		footeHeight = this.addStaticRepeatable(footer, footerSizeFct);
 	}
+
+	if (isFunction(header)) {
+		headerHeight = this.addDynamicRepeatable(header, headerSizeFct);
+	} else if (header) {
+		headerHeight = this.addStaticRepeatable(header, headerSizeFct);
+	}
+
+	return { header:headerHeight , footer:footeHeight };
 };
 
 LayoutBuilder.prototype.addWatermark = function (watermark, fontProvider, defaultStyle) {
@@ -313,11 +376,117 @@ function decorateNode(node) {
 	};
 }
 
+var this_tracker_test;
+var this_writer_test;
+var this_verticalAlignItemStack_test = [];
+var result_test = false;
+var filterFooter = -1;
+var footerBreak = false;
+
+var processNode_test = function (node) {
+
+	decorateNode(node);
+
+	var prevTop = this_writer_test.context().getCurrentPosition().top;
+
+	applyMargins(function () {
+		var unbreakable = node.unbreakable;
+		if (unbreakable) {
+			this_writer_test.beginUnbreakableBlock();
+		}
+
+		var absPosition = node.absolutePosition;
+		if (absPosition) {
+			this_writer_test.context().beginDetachedBlock();
+			this_writer_test.context().moveTo(absPosition.x || 0, absPosition.y || 0);
+		}
+
+		var relPosition = node.relativePosition;
+		if (relPosition) {
+			this_writer_test.context().beginDetachedBlock();
+			this_writer_test.context().moveTo((relPosition.x || 0) + self.writer.context().x, (relPosition.y || 0) + self.writer.context().y);
+		}
+
+		var verticalAlignBegin;
+		if (node.verticalAlign) {
+		  verticalAlignBegin = this_writer_test.beginVerticalAlign(node.verticalAlign);
+		}
+
+		if (node.stack) {
+			processVerticalContainer_test(node);
+		} else if (node.table) {
+			processTable_test(node);
+		} else if (node.text !== undefined) {
+			processLeaf_test(node);
+		}
+
+		if (absPosition || relPosition) {
+			this_writer_test.context().endDetachedBlock();
+		}
+
+			if (unbreakable) {
+				result_test = this_writer_test.commitUnbreakableBlock_test();
+			}
+
+			if (node.verticalAlign) {
+				this_verticalAlignItemStack_test.push({ begin: verticalAlignBegin, end: this_writer_test.endVerticalAlign(node.verticalAlign) });
+			  }
+
+	});
+
+	// TODO: ugly; does not work (at least) when page break in node
+  	node._height = this_writer_test.context().getCurrentPosition().top - prevTop;
+
+	function applyMargins(callback) {
+		var margin = node._margin;
+
+		if (node.pageBreak === 'before') {
+			this_writer_test.moveToNextPage(node.pageOrientation);
+		}
+
+		if (margin) {
+			this_writer_test.context().moveDown(margin[1]);
+			this_writer_test.context().addMargin(margin[0], margin[2]);
+		}
+
+		callback();
+
+		if (margin) {
+			this_writer_test.context().addMargin(-margin[0], -margin[2]);
+			this_writer_test.context().moveDown(margin[3]);
+		}
+
+		if (node.pageBreak === 'after') {
+			this_writer_test.moveToNextPage(node.pageOrientation);
+		}
+	}
+
+}
+
 LayoutBuilder.prototype.processNode = function (node) {
+	if(footerBreak && node.footerBreak){return;}
 	var self = this;
+	var unbreakable_test = node.unbreakable;
+	if (unbreakable_test) {
+		if(node.summary){
+			if(node.table.body[0][0].summaryBreak){
+				this_tracker_test = new TraversalTracker();
+				this_writer_test = new PageElementWriter(self.writer.context(),this_tracker_test);
+				this_verticalAlignItemStack_test = self.verticalAlignItemStack.slice();
+				var node_test = _.cloneDeep(node);
+				node_test.table.body[0].splice(0,1);
+				processNode_test(node_test);
+				if(result_test){
+					node.table.body[0].splice(0,1);
+				}
+			}
+		}
+	}
 
 	this.linearNodeList.push(node);
 	decorateNode(node);
+
+	var prevTop = self.writer.context().getCurrentPosition().top;
 
 	applyMargins(function () {
 		var unbreakable = node.unbreakable;
@@ -337,9 +506,16 @@ LayoutBuilder.prototype.processNode = function (node) {
 			self.writer.context().moveTo((relPosition.x || 0) + self.writer.context().x, (relPosition.y || 0) + self.writer.context().y);
 		}
 
+		var verticalAlignBegin;
+		if (node.verticalAlign) {
+		  verticalAlignBegin = self.writer.beginVerticalAlign(node.verticalAlign);
+		}
+
 		if (node.stack) {
 			self.processVerticalContainer(node);
-		} else if (node.columns) {
+		} else if (node.layers) {
+			self.processLayers(node);
+		}  else if (node.columns) {
 			self.processColumns(node);
 		} else if (node.ul) {
 			self.processList(false, node);
@@ -365,10 +541,23 @@ LayoutBuilder.prototype.processNode = function (node) {
 			self.writer.context().endDetachedBlock();
 		}
 
-		if (unbreakable) {
-			self.writer.commitUnbreakableBlock();
-		}
+			if (unbreakable) {
+
+				if(node.footer){
+					footerBreak = self.writer.commitUnbreakableBlock(undefined, undefined, node.footer);
+				} else {
+					self.writer.commitUnbreakableBlock();
+				}
+			}
+
+		if (node.verticalAlign) {
+			self.verticalAlignItemStack.push({ begin: verticalAlignBegin, end: self.writer.endVerticalAlign(node.verticalAlign) });
+		  }
+
 	});
+
+	// TODO: ugly; does not work (at least) when page break in node
+  	node._height = self.writer.context().getCurrentPosition().top - prevTop;
 
 	function applyMargins(callback) {
 		var margin = node._margin;
@@ -406,6 +595,36 @@ LayoutBuilder.prototype.processVerticalContainer = function (node) {
 	});
 };
 
+var processVerticalContainer_test = function (node) {
+
+	node.stack.forEach(function (item) {
+		processNode_test(item);
+		addAll(node.positions, item.positions);
+
+		//TODO: paragraph gap
+	});
+};
+
+// layers
+LayoutBuilder.prototype.processLayers = function(node) {
+	var self = this;
+	var ctxX = self.writer.context().x;
+	var ctxY = self.writer.context().y;
+	var maxX = ctxX;
+	var maxY = ctxY;
+	node.layers.forEach(function(item, i) {
+	  self.writer.context().x = ctxX;
+	  self.writer.context().y = ctxY;
+	  self.processNode(item);
+	  item._verticalAlignIdx = self.verticalAlignItemStack.length - 1;
+	  addAll(node.positions, item.positions);
+	  maxX = self.writer.context().x > maxX ? self.writer.context().x : maxX;
+	  maxY = self.writer.context().y > maxY ? self.writer.context().y : maxY;
+	});
+	self.writer.context().x = maxX;
+	self.writer.context().y = maxY;
+  };
+
 // columns
 LayoutBuilder.prototype.processColumns = function (columnNode) {
 	var columns = columnNode.columns;
@@ -437,7 +656,7 @@ LayoutBuilder.prototype.processColumns = function (columnNode) {
 	}
 };
 
-LayoutBuilder.prototype.processRow = function (columns, widths, gaps, tableBody, tableRow) {
+LayoutBuilder.prototype.processRow = function (columns, widths, gaps, tableBody, tableRow, isRemark) {
 	var self = this;
 	var pageBreaks = [], positions = [];
 
@@ -446,11 +665,13 @@ LayoutBuilder.prototype.processRow = function (columns, widths, gaps, tableBody,
 
 		self.writer.context().beginColumnGroup();
 
+		var verticalAlignCols = {};
+
 		for (var i = 0, l = columns.length; i < l; i++) {
 			var column = columns[i];
 			var width = widths[i]._calcWidth;
 			var leftOffset = colLeftOffset(i);
-
+			var colI = i;
 			if (column.colSpan && column.colSpan > 1) {
 				for (var j = 1; j < column.colSpan; j++) {
 					width += widths[++i]._calcWidth + gaps[i];
@@ -458,8 +679,10 @@ LayoutBuilder.prototype.processRow = function (columns, widths, gaps, tableBody,
 			}
 
 			self.writer.context().beginColumn(width, leftOffset, getEndingCell(column, i));
+
 			if (!column._span) {
 				self.processNode(column);
+				verticalAlignCols[colI] = self.verticalAlignItemStack.length - 1;
 				addAll(positions, column.positions);
 			} else if (column._columnEndingContext) {
 				// row-span ending
@@ -468,13 +691,32 @@ LayoutBuilder.prototype.processRow = function (columns, widths, gaps, tableBody,
 		}
 
 		self.writer.context().completeColumnGroup();
+
+		var rowHeight = self.writer.context().height;
+		for(var i = 0, l = columns.length; i < l; i++) {
+		  var column = columns[i];
+		  if (column._span) continue;
+		  if (column.verticalAlign) {
+			var item = self.verticalAlignItemStack[verticalAlignCols[i]].begin.item;
+			item.viewHeight = rowHeight;
+			item.nodeHeight = column._height;
+		  }
+		  if (column.layers) {
+			column.layers.forEach(function(layer) {
+			  if(layer.verticalAlign) {
+				var item = self.verticalAlignItemStack[layer._verticalAlignIdx].begin.item;
+				item.viewHeight = rowHeight;
+				item.nodeHeight = layer._height;
+			  }
+			});
+		  }
+		}
 	});
 
 	return {pageBreaks: pageBreaks, positions: positions};
 
 	function storePageBreakData(data) {
 		var pageDesc;
-
 		for (var i = 0, l = pageBreaks.length; i < l; i++) {
 			var desc = pageBreaks[i];
 			if (desc.prevPage === data.prevPage) {
@@ -509,6 +751,119 @@ LayoutBuilder.prototype.processRow = function (columns, widths, gaps, tableBody,
 
 		return null;
 	}
+
+	function verticalAlignLayer(layer) {
+		if(layer.verticalAlign) {
+		  var item = self.verticalAlignItemStack[layer._verticalAlignIdx].begin.item;
+		  item.viewHeight = self.writer.context().height;
+		  item.nodeHeight = layer._height;
+		}
+	  }
+};
+
+var processRow_test = function (columns, widths, gaps, tableBody, tableRow, isRemark) {
+
+	var pageBreaks = [], positions = [];
+
+	this_tracker_test.auto('pageChanged', storePageBreakData, function () {
+		widths = widths || columns;
+
+		this_writer_test.context().beginColumnGroup();
+
+		var verticalAlignCols = {};
+
+		for (var i = 0, l = columns.length; i < l; i++) {
+			var column = columns[i];
+			var width = widths[i]._calcWidth;
+			var leftOffset = colLeftOffset(i);
+			var colI = i;
+			if (column.colSpan && column.colSpan > 1) {
+				for (var j = 1; j < column.colSpan; j++) {
+					width += widths[++i]._calcWidth + gaps[i];
+				}
+			}
+
+			this_writer_test.context().beginColumn(width, leftOffset, getEndingCell(column, i));
+
+			if (!column._span) {
+				processNode_test(column);
+				verticalAlignCols[colI] = this_verticalAlignItemStack_test.length - 1;
+				addAll(positions, column.positions);
+			} else if (column._columnEndingContext) {
+				// row-span ending
+				this_writer_test.context().markEnding(column);
+			}
+		}
+
+		this_writer_test.context().completeColumnGroup();
+
+		var rowHeight = this_writer_test.context().height;
+		for(var i = 0, l = columns.length; i < l; i++) {
+		  var column = columns[i];
+		  if (column._span) continue;
+		  if (column.verticalAlign) {
+			var item = this_verticalAlignItemStack_test[verticalAlignCols[i]].begin.item;
+			item.viewHeight = rowHeight;
+			item.nodeHeight = column._height;
+		  }
+		  if (column.layers) {
+			column.layers.forEach(function(layer) {
+			  if(layer.verticalAlign) {
+				var item = this_verticalAlignItemStack_test[layer._verticalAlignIdx].begin.item;
+				item.viewHeight = rowHeight;
+				item.nodeHeight = layer._height;
+			  }
+			});
+		  }
+		}
+	});
+
+	return {pageBreaks: pageBreaks, positions: positions};
+
+	function storePageBreakData(data) {
+		var pageDesc;
+		for (var i = 0, l = pageBreaks.length; i < l; i++) {
+			var desc = pageBreaks[i];
+			if (desc.prevPage === data.prevPage) {
+				pageDesc = desc;
+				break;
+			}
+		}
+
+		if (!pageDesc) {
+			pageDesc = data;
+			pageBreaks.push(pageDesc);
+		}
+		pageDesc.prevY = Math.max(pageDesc.prevY, data.prevY);
+		pageDesc.y = Math.min(pageDesc.y, data.y);
+	}
+
+	function colLeftOffset(i) {
+		if (gaps && gaps.length > i) {
+			return gaps[i];
+		}
+		return 0;
+	}
+
+	function getEndingCell(column, columnIndex) {
+		if (column.rowSpan && column.rowSpan > 1) {
+			var endingRow = tableRow + column.rowSpan - 1;
+			if (endingRow >= tableBody.length) {
+				throw 'Row span for column ' + columnIndex + ' (with indexes starting from 0) exceeded row count';
+			}
+			return tableBody[endingRow][columnIndex];
+		}
+
+		return null;
+	}
+
+	function verticalAlignLayer(layer) {
+		if(layer.verticalAlign) {
+		  var item = this_verticalAlignItemStack_test[layer._verticalAlignIdx].begin.item;
+		  item.viewHeight = this_writer_test.context().height;
+		  item.nodeHeight = layer._height;
+		}
+	  }
 };
 
 // lists
@@ -556,13 +911,12 @@ LayoutBuilder.prototype.processList = function (orderedList, node) {
 // tables
 LayoutBuilder.prototype.processTable = function (tableNode) {
 	var processor = new TableProcessor(tableNode);
-
 	processor.beginTable(this.writer);
 
 	for (var i = 0, l = tableNode.table.body.length; i < l; i++) {
 		processor.beginRow(i, this.writer);
 
-		var result = this.processRow(tableNode.table.body[i], tableNode.table.widths, tableNode._offsets.offsets, tableNode.table.body, i);
+		var result = this.processRow(tableNode.table.body[i], tableNode.table.widths, tableNode._offsets.offsets, tableNode.table.body, i, tableNode.remark);
 		addAll(tableNode.positions, result.positions);
 
 		processor.endRow(i, this.writer, result.pageBreaks);
@@ -571,8 +925,26 @@ LayoutBuilder.prototype.processTable = function (tableNode) {
 	processor.endTable(this.writer);
 };
 
+// tables
+var processTable_test = function (tableNode) {
+	var processor = new TableProcessor(tableNode);
+	processor.beginTable(this_writer_test);
+
+	for (var i = 0, l = tableNode.table.body.length; i < l; i++) {
+		processor.beginRow(i, this_writer_test);
+
+		var result = processRow_test(tableNode.table.body[i], tableNode.table.widths, tableNode._offsets.offsets, tableNode.table.body, i, tableNode.remark);
+		addAll(tableNode.positions, result.positions);
+
+		processor.endRow(i, this_writer_test, result.pageBreaks);
+	}
+
+	processor.endTable(this_writer_test);
+};
+
 // leafs (texts)
 LayoutBuilder.prototype.processLeaf = function (node) {
+
 	var line = this.buildNextLine(node);
 	var currentHeight = (line) ? line.getHeight() : 0;
 	var maxHeight = node.maxHeight || -1;
@@ -585,6 +957,26 @@ LayoutBuilder.prototype.processLeaf = function (node) {
 		var positions = this.writer.addLine(line);
 		node.positions.push(positions);
 		line = this.buildNextLine(node);
+		if (line) {
+			currentHeight += line.getHeight();
+		}
+	}
+};
+
+var processLeaf_test = function (node) {
+
+	var line = buildNextLine_test(node);
+	var currentHeight = (line) ? line.getHeight() : 0;
+	var maxHeight = node.maxHeight || -1;
+
+	if (node._tocItemRef) {
+		line._tocItemNode = node._tocItemRef;
+	}
+
+	while (line && (maxHeight === -1 || currentHeight < maxHeight)) {
+		var positions = this_writer_test.addLine(line);
+		node.positions.push(positions);
+		line = buildNextLine_test(node);
 		if (line) {
 			currentHeight += line.getHeight();
 		}
@@ -626,6 +1018,53 @@ LayoutBuilder.prototype.buildNextLine = function (textNode) {
 			}
 			if (maxChars < inline.text.length) {
 				var newInline = cloneInline(inline);
+
+				newInline.text = inline.text.substr(maxChars);
+				inline.text = inline.text.substr(0, maxChars);
+
+				newInline.width = textTools.widthOfString(newInline.text, newInline.font, newInline.fontSize, newInline.characterSpacing);
+				inline.width = textTools.widthOfString(inline.text, inline.font, inline.fontSize, inline.characterSpacing);
+
+				textNode._inlines.unshift(newInline);
+			}
+		}
+
+		line.addInline(inline);
+	}
+
+	line.lastLineInParagraph = textNode._inlines.length === 0;
+
+	return line;
+};
+
+var buildNextLine_test = function (textNode) {
+
+	function cloneInline_test(inline) {
+		var newInline = inline.constructor();
+		for (var key in inline) {
+			newInline[key] = inline[key];
+		}
+		return newInline;
+	}
+
+	if (!textNode._inlines || textNode._inlines.length === 0) {
+		return null;
+	}
+
+	var line = new Line(this_writer_test.context().availableWidth);
+	var textTools = new TextTools(null);
+
+	while (textNode._inlines && textNode._inlines.length > 0 && line.hasEnoughSpaceForInline(textNode._inlines[0])) {
+		var inline = textNode._inlines.shift();
+
+		if (!inline.noWrap && inline.text.length > 1 && inline.width > line.maxWidth) {
+			var widthPerChar = inline.width / inline.text.length;
+			var maxChars = Math.floor(line.maxWidth / widthPerChar);
+			if (maxChars < 1) {
+				maxChars = 1;
+			}
+			if (maxChars < inline.text.length) {
+				var newInline = cloneInline_test(inline);
 
 				newInline.text = inline.text.substr(maxChars);
 				inline.text = inline.text.substr(0, maxChars);
