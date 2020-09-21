@@ -50,11 +50,50 @@ PageElementWriter.prototype.addVector = function (vector, ignoreContextX, ignore
 	return this.writer.addVector(vector, ignoreContextX, ignoreContextY, index);
 };
 
-PageElementWriter.prototype.addFragment = function (fragment, useBlockXOffset, useBlockYOffset, dontUpdateContextPosition) {
-	if (!this.writer.addFragment(fragment, useBlockXOffset, useBlockYOffset, dontUpdateContextPosition)) {
-		this.moveToNextPage();
-		this.writer.addFragment(fragment, useBlockXOffset, useBlockYOffset, dontUpdateContextPosition);
+var newPageFooterBreak = true;
+
+PageElementWriter.prototype.addFragment = function (fragment, useBlockXOffset, useBlockYOffset, dontUpdateContextPosition, isFooter) {
+	var res = this.writer.addFragment(fragment, useBlockXOffset, useBlockYOffset, dontUpdateContextPosition, isFooter);
+	if(isFooter){
+		if(res && isFooter == 1){
+			newPageFooterBreak = false;
+			return true;
+		} else if(!res && isFooter == 2 && newPageFooterBreak){
+			this.moveToNextPage();
+			this.writer.addFragment(fragment, useBlockXOffset, useBlockYOffset, dontUpdateContextPosition, isFooter);
+		} else if(!res && isFooter == 1) {
+			this.moveToNextPage();
+		}
+	} else {
+		if(!res){
+			this.moveToNextPage();
+			this.writer.addFragment(fragment, useBlockXOffset, useBlockYOffset, dontUpdateContextPosition, isFooter);
+		}
 	}
+
+};
+
+PageElementWriter.prototype.addFragment_test = function (fragment, useBlockXOffset, useBlockYOffset, dontUpdateContextPosition) {
+
+	if (fragment.height > this.writer.context.availableHeight) {
+		//console.log('PageBreak');
+		return false;
+	} else {
+		//console.log('None PageBreak');
+		return true;
+	}
+};
+
+PageElementWriter.prototype.removeBeginClip = function(item) {
+	return this.writer.removeBeginClip(item);
+};
+
+PageElementWriter.prototype.beginVerticalAlign = function(verticalAlign) {
+	return this.writer.beginVerticalAlign(verticalAlign);
+};
+
+PageElementWriter.prototype.endVerticalAlign = function(verticalAlign) {
+	return this.writer.endVerticalAlign(verticalAlign);
 };
 
 PageElementWriter.prototype.moveToNextPage = function (pageOrientation) {
@@ -85,9 +124,10 @@ PageElementWriter.prototype.beginUnbreakableBlock = function (width, height) {
 	}
 };
 
-PageElementWriter.prototype.commitUnbreakableBlock = function (forcedX, forcedY) {
+PageElementWriter.prototype.commitUnbreakableBlock = function (forcedX, forcedY, isFooter) {
 	if (--this.transactionLevel === 0) {
 		var unbreakableContext = this.writer.context;
+
 		this.writer.popContext();
 
 		var nbPages = unbreakableContext.pages.length;
@@ -115,8 +155,29 @@ PageElementWriter.prototype.commitUnbreakableBlock = function (forcedX, forcedY)
 			if (forcedX !== undefined || forcedY !== undefined) {
 				this.writer.addFragment(fragment, true, true, true);
 			} else {
-				this.addFragment(fragment);
+				return this.addFragment(fragment,undefined,undefined,undefined,isFooter);
 			}
+		}
+	}
+};
+
+PageElementWriter.prototype.commitUnbreakableBlock_test = function (forcedX, forcedY) {
+	if (--this.transactionLevel === 0) {
+		var unbreakableContext = this.writer.context;
+		this.writer.popContext();
+
+		var nbPages = unbreakableContext.pages.length;
+		if (nbPages > 0) {
+			// no support for multi-page unbreakableBlocks
+			var fragment = unbreakableContext.pages[0];
+			fragment.xOffset = forcedX;
+			fragment.yOffset = forcedY;
+
+			fragment.height = unbreakableContext.y;
+
+			var res = this.addFragment_test(fragment);
+
+			return res;
 		}
 	}
 };

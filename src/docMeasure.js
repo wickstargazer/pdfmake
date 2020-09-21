@@ -42,6 +42,8 @@ DocMeasure.prototype.measureNode = function (node) {
 			return extendMargins(self.measureColumns(node));
 		} else if (node.stack) {
 			return extendMargins(self.measureVerticalContainer(node));
+		} else if (node.layers) {
+			return extendMargins(self.measureLayers(node));
 		} else if (node.ul) {
 			return extendMargins(self.measureUnorderedList(node));
 		} else if (node.ol) {
@@ -212,11 +214,14 @@ DocMeasure.prototype.measureToc = function (node) {
 	}
 
 	var body = [];
+	var numberStyle = node.toc.numberStyle || {};
 	for (var i = 0, l = node.toc._items.length; i < l; i++) {
 		var item = node.toc._items[i];
+		var lineStyle = node.toc._items[i].tocStyle || {};
+		var lineMargin = node.toc._items[i].tocMargin || [ 0, 0, 0, 0 ];
 		body.push([
-			{text: item.text, alignment: 'left'},
-			{text: '00000', alignment: 'right', _tocItemRef: item}
+			{text: item.text, alignment: 'left', style: lineStyle, margin: lineMargin},
+			{text: '00000', alignment: 'right', _tocItemRef: item, style: numberStyle, margin: [ 0, lineMargin[1], 0, lineMargin[3]]}
 		]);
 	}
 
@@ -237,6 +242,22 @@ DocMeasure.prototype.measureToc = function (node) {
 
 DocMeasure.prototype.measureVerticalContainer = function (node) {
 	var items = node.stack;
+
+	node._minWidth = 0;
+	node._maxWidth = 0;
+
+	for (var i = 0, l = items.length; i < l; i++) {
+		items[i] = this.measureNode(items[i]);
+
+		node._minWidth = Math.max(node._minWidth, items[i]._minWidth);
+		node._maxWidth = Math.max(node._maxWidth, items[i]._maxWidth);
+	}
+
+	return node;
+};
+
+DocMeasure.prototype.measureLayers = function (node) {
+	var items = node.layers;
 
 	node._minWidth = 0;
 	node._maxWidth = 0;
@@ -429,7 +450,7 @@ DocMeasure.prototype.measureUnorderedList = function (node) {
 		var item = items[i] = this.measureNode(items[i]);
 
 		if (!item.ol && !item.ul) {
-			item.listMarker = this.buildUnorderedMarker(style, node._gapSize, node.type);
+			item.listMarker = this.buildUnorderedMarker(style, node._gapSize, item.listType || node.type);
 		}
 
 		node._minWidth = Math.max(node._minWidth, items[i]._minWidth + node._gapSize.width);
@@ -457,7 +478,7 @@ DocMeasure.prototype.measureOrderedList = function (node) {
 		var item = items[i] = this.measureNode(items[i]);
 
 		if (!item.ol && !item.ul) {
-			item.listMarker = this.buildOrderedMarker(item.counter || counter, style, node.type, node.separator);
+			item.listMarker = this.buildOrderedMarker(item.counter || counter, style, item.listType || node.type, node.separator);
 			if (item.listMarker._inlines) {
 				node._gapSize.width = Math.max(node._gapSize.width, item.listMarker._inlines[0].width);
 			}
@@ -510,41 +531,41 @@ DocMeasure.prototype.measureTable = function (node) {
 
 	var colSpans = [];
 	var col, row, cols, rows;
+	if(node.table.body[0]) {
+		for (col = 0, cols = node.table.body[0].length; col < cols; col++) {
+			var c = node.table.widths[col];
+			c._minWidth = 0;
+			c._maxWidth = 0;
 
-	for (col = 0, cols = node.table.body[0].length; col < cols; col++) {
-		var c = node.table.widths[col];
-		c._minWidth = 0;
-		c._maxWidth = 0;
-
-		for (row = 0, rows = node.table.body.length; row < rows; row++) {
-			var rowData = node.table.body[row];
-			var data = rowData[col];
-			if (data === undefined) {
-				console.error('Malformed table row ', rowData, 'in node ', node);
-				throw 'Malformed table row, a cell is undefined.';
-			}
-			if (data === null) { // transform to object
-				data = '';
-			}
-
-			if (!data._span) {
-				data = rowData[col] = this.styleStack.auto(data, measureCb(this, data));
-
-				if (data.colSpan && data.colSpan > 1) {
-					markSpans(rowData, col, data.colSpan);
-					colSpans.push({col: col, span: data.colSpan, minWidth: data._minWidth, maxWidth: data._maxWidth});
-				} else {
-					c._minWidth = Math.max(c._minWidth, data._minWidth);
-					c._maxWidth = Math.max(c._maxWidth, data._maxWidth);
+			for (row = 0, rows = node.table.body.length; row < rows; row++) {
+				var rowData = node.table.body[row];
+				var data = rowData[col];
+				if (data === undefined) {
+					console.error('Malformed table row ', rowData, 'in node ', node);
+					throw 'Malformed table row, a cell is undefined.';
 				}
-			}
+				if (data === null) { // transform to object
+					data = '';
+				}
 
-			if (data.rowSpan && data.rowSpan > 1) {
-				markVSpans(node.table, row, col, data.rowSpan);
+				if (!data._span) {
+					data = rowData[col] = this.styleStack.auto(data, measureCb(this, data));
+
+					if (data.colSpan && data.colSpan > 1) {
+						markSpans(rowData, col, data.colSpan);
+						colSpans.push({col: col, span: data.colSpan, minWidth: data._minWidth, maxWidth: data._maxWidth});
+					} else {
+						c._minWidth = Math.max(c._minWidth, data._minWidth);
+						c._maxWidth = Math.max(c._maxWidth, data._maxWidth);
+					}
+				}
+
+				if (data.rowSpan && data.rowSpan > 1) {
+					markVSpans(node.table, row, col, data.rowSpan);
+				}
 			}
 		}
 	}
-
 	extendWidthsForColSpans();
 
 	var measures = ColumnCalculator.measureMinMax(node.table.widths);

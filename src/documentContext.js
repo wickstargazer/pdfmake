@@ -9,7 +9,6 @@ var TraversalTracker = require('./traversalTracker');
  */
 function DocumentContext(pageSize, pageMargins) {
 	this.pages = [];
-
 	this.pageMargins = pageMargins;
 
 	this.x = pageMargins.left;
@@ -100,8 +99,9 @@ DocumentContext.prototype.completeColumnGroup = function () {
 	this.x = saved.x;
 	this.y = saved.bottomMost.y;
 	this.page = saved.bottomMost.page;
-	this.availableWidth = saved.availableWidth;
+	this.height = saved.bottomMost.y - saved.y;
 	this.availableHeight = saved.bottomMost.availableHeight;
+	this.availableWidth = saved.availableWidth;
 	this.lastColumnWidth = saved.lastColumnWidth;
 };
 
@@ -120,6 +120,7 @@ DocumentContext.prototype.moveDown = function (offset) {
 DocumentContext.prototype.initializePage = function () {
 	this.y = this.pageMargins.top;
 	this.availableHeight = this.getCurrentPage().pageSize.height - this.pageMargins.top - this.pageMargins.bottom;
+	this.fullHeight = this.availableHeight;
 	this.pageSnapshot().availableWidth = this.getCurrentPage().pageSize.width - this.pageMargins.left - this.pageMargins.right;
 };
 
